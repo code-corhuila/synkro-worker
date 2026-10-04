@@ -2,8 +2,8 @@
 
 > Asynchronous jobs and background processing
 
-Part of the **LMS Library** distributed system — team `lms-library`, Grupo 2.
-Governance and documentation live in [`library-docs`](https://github.com/code-corhuila/library-docs).
+Part of the **SynkroTech SAS Sales Management System** — organization `code-corhuila`.
+Governance and documentation live in [`synkro-docs`](https://github.com/code-corhuila/synkro-docs).
 
 ## Branching
 
@@ -22,4 +22,4 @@ branch into another: `merge develop -> qa` and `merge qa -> main` do not exist i
 `main` requires **1 approval from `ariel5253`**. On `develop` and `qa` the team sets its own review
 rule.
 
-Full policy: `00-governance/branching-policy.md` in `library-docs`.
+Full policy: `00-governance/branching-policy.md` in `synkro-docs`.
