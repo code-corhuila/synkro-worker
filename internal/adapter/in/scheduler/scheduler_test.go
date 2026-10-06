@@ -4,73 +4,103 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 )
 
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// runInBackground starts Run in a goroutine and returns a channel closed when
+// it returns, so tests can assert on shutdown and never leak the loop.
+func runInBackground(ctx context.Context, every, runTimeout time.Duration, job Job) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		Run(ctx, discardLogger(), every, runTimeout, job)
+		close(done)
+	}()
+	return done
+}
+
+func waitDone(t *testing.T, done <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("Run did not stop within 1s of context cancellation")
+	}
+}
+
 func TestRun_CallsJobOnEveryTick(t *testing.T) {
-	var calls int32
+	// Event-driven rather than "count calls inside a fixed window": a fixed
+	// 35ms window flaked on Windows when the OS stalled the process, and would
+	// be worse under -race on a busy CI runner.
+	const wantCalls = 3
+	calls := make(chan struct{}, wantCalls)
 	job := func(ctx context.Context) error {
-		atomic.AddInt32(&calls, 1)
+		select {
+		case calls <- struct{}{}:
+		default:
+		}
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 35*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	done := runInBackground(ctx, 10*time.Millisecond, 5*time.Second, job)
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	Run(ctx, logger, 10*time.Millisecond, 5*time.Second, job)
-
-	got := atomic.LoadInt32(&calls)
-	if got < 2 {
-		t.Fatalf("expected at least 2 job calls in 35ms with a 10ms interval, got %d", got)
+	deadline := time.After(2 * time.Second)
+	for i := 0; i < wantCalls; i++ {
+		select {
+		case <-calls:
+		case <-deadline:
+			t.Fatalf("expected %d job calls with a 10ms interval within 2s, got %d", wantCalls, i)
+		}
 	}
+
+	cancel()
+	waitDone(t, done)
 }
 
 func TestRun_StopsWhenContextIsCancelled(t *testing.T) {
 	job := func(ctx context.Context) error { return nil }
 
 	ctx, cancel := context.WithCancel(context.Background())
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-
-	done := make(chan struct{})
-	go func() {
-		Run(ctx, logger, 5*time.Millisecond, 5*time.Second, job)
-		close(done)
-	}()
+	done := runInBackground(ctx, 5*time.Millisecond, 5*time.Second, job)
 
 	time.Sleep(20 * time.Millisecond)
 	cancel()
 
-	select {
-	case <-done:
-		// Run returned promptly after cancellation, as expected
-	case <-time.After(1 * time.Second):
-		t.Fatal("Run did not stop within 1s of context cancellation")
-	}
+	waitDone(t, done)
 }
 
 func TestRun_BoundsEachJobRunWithRunTimeout(t *testing.T) {
 	jobStarted := make(chan struct{})
 	jobSawCancel := make(chan bool, 1)
 
+	// Only the first call is observed; later ticks fire while the test is
+	// still running and must be no-ops (closing jobStarted twice panics).
+	var first sync.Once
 	job := func(ctx context.Context) error {
-		close(jobStarted)
-		select {
-		case <-ctx.Done():
-			jobSawCancel <- true
-		case <-time.After(1 * time.Second):
-			jobSawCancel <- false
-		}
+		first.Do(func() {
+			close(jobStarted)
+			select {
+			case <-ctx.Done():
+				jobSawCancel <- true
+			case <-time.After(1 * time.Second):
+				jobSawCancel <- false
+			}
+		})
 		return nil
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	// The parent context outlives runTimeout by far, so a cancellation seen
+	// by the job can only come from runTimeout.
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	go Run(ctx, logger, 10*time.Millisecond, 20*time.Millisecond, job)
+	done := runInBackground(ctx, 10*time.Millisecond, 20*time.Millisecond, job)
 
 	<-jobStarted
 	select {
@@ -78,7 +108,10 @@ func TestRun_BoundsEachJobRunWithRunTimeout(t *testing.T) {
 		if !sawCancel {
 			t.Fatal("expected the job's context to be cancelled by RunTimeout, but it ran to completion")
 		}
-	case <-time.After(1 * time.Second):
+	case <-time.After(2 * time.Second):
 		t.Fatal("job never observed its context being cancelled")
 	}
+
+	cancel()
+	waitDone(t, done)
 }
