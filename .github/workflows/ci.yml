@@ -20,3 +20,27 @@ jobs:
           test -f .github/pull_request_template.md
           test -f .env.example
           echo "Common files present."
+
+  build-test-and-architecture-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: Build
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Test (with race detector)
+        run: go test -race ./...
+      - name: Architecture check — domain imports nothing but the standard library
+        run: |
+          set -e
+          violations=$(go list -deps -f '{{if not .Standard}}{{.ImportPath}}{{end}}' ./internal/domain/... | grep -v '^github.com/code-corhuila/synkro-worker' || true)
+          if [ -n "$violations" ]; then
+            echo "internal/domain imports outside the standard library:"
+            echo "$violations"
+            exit 1
+          fi
+          echo "Architecture check passed: domain has no external imports."
