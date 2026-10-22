@@ -23,3 +23,18 @@ branch into another: `merge develop -> qa` and `merge qa -> main` do not exist i
 rule.
 
 Full policy: `00-governance/branching-policy.md` in `synkro-docs`.
+
+## Running locally
+
+```bash
+SERVICE_TOKEN=dev-placeholder go run ./cmd/worker
+```
+
+Logs one line per job run. Stop with Ctrl+C (SIGINT) — the worker exits
+cleanly.
+
+## Running the tests
+
+```bash
+go test -race ./...
+```

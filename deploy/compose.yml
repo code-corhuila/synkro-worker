@@ -1,0 +1,13 @@
+services:
+  synkro-worker:
+    build:
+      context: ../
+      dockerfile: deploy/Dockerfile
+    environment:
+      SERVICE_TOKEN: ${WORKER_SERVICE_TOKEN}
+      PRODUCTS_API_URL: http://synkro-products-api:8080
+    networks: [platform]
+
+networks:
+  platform:
+    external: true
