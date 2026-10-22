@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+    branches: [develop, qa, main]
+  pull_request:
+    branches: [develop, qa, main]
+
+jobs:
+  check-common-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify common repository files exist
+        run: |
+          set -e
+          test -f README.md
+          test -f .gitignore
+          test -f .github/CODEOWNERS
+          test -f .github/pull_request_template.md
+          test -f .env.example
+          echo "Common files present."
