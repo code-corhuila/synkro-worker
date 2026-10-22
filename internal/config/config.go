@@ -46,7 +46,9 @@ func getEnv(key, def string) string {
 
 func getDuration(key string, def time.Duration) time.Duration {
 	if v := os.Getenv(key); v != "" {
-		// Non-positive durations are rejected: time.NewTicker panics on them.
+		// Malformed and non-positive values are not reported as errors: they
+		// fall back to def. Non-positive ones must not get through because
+		// time.NewTicker panics on them.
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			return d
 		}
