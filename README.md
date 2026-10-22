@@ -17,6 +17,15 @@ uses it yet, so no authentication against Products has been exercised.
 `RUN_TIMEOUT` sets a deadline on the context passed to each job run. The deadline is cooperative: a
 job that ignores its context is not interrupted, and it delays the next run and the shutdown.
 
+Known limitations of this delivery:
+
+- Only `SERVICE_TOKEN` is validated. Malformed or non-positive durations fall back to their defaults
+  without an error, and integer settings accept any value, including negative ones.
+- A panic inside a job is not recovered and ends the process.
+- `internal/domain`, `internal/application` and `internal/adapter/out/products` hold only
+  placeholders, so the architecture check in CI has no domain code to inspect yet.
+- The job is a placeholder, as described above.
+
 ## Branching
 
 Three permanent branches. **None of them accepts a direct commit** — you enter through a child
