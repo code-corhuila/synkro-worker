@@ -6,12 +6,17 @@ import (
 	"time"
 )
 
-// Job is a unit of scheduled work. It should respect ctx's deadline.
+// Job is a unit of scheduled work. It must observe ctx: the scheduler cannot
+// interrupt a job that ignores it.
 type Job func(ctx context.Context) error
 
-// Run ticks every `every` and calls job, until ctx is cancelled. Each call
-// to job is bounded by runTimeout, enforced here — job does not need to
-// implement its own timeout.
+// Run ticks every `every` and calls job, until ctx is cancelled. Runs are
+// sequential: ticks that arrive while a job is running never start a second
+// run, and the ticker keeps at most one of them pending.
+// Each call to job receives a context with a runTimeout deadline, cancelled
+// when ctx is. The deadline is cooperative: a job that ignores its context
+// keeps running past runTimeout and delays both the next run and the return
+// of Run.
 func Run(ctx context.Context, logger *slog.Logger, every, runTimeout time.Duration, job Job) {
 	ticker := time.NewTicker(every)
 	defer ticker.Stop()
