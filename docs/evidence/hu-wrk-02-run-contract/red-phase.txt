@@ -1,0 +1,48 @@
+# RED phase, 2026-10-31. Command: go test -count=1 ./...  (go1.27.0 windows/amd64)
+# Tests written first; production untouched. Paths sanitised; output truncated to the first diagnostics per package.
+# github.com/code-corhuila/synkro-worker/internal/adapter/in/scheduler [github.com/code-corhuila/synkro-worker/internal/adapter/in/scheduler.test]
+internal\adapter\in\scheduler\runid_test.go:19:21: cannot use gen (variable of type func() (string, error)) as func() string value in assignment
+internal\adapter\in\scheduler\runid_test.go:105:14: assignment mismatch: 2 variables but randomUUID returns 1 value
+internal\adapter\in\scheduler\runid_test.go:109:19: undefined: model.ValidateRunID
+internal\adapter\in\scheduler\runid_test.go:123:13: undefined: uuidFrom
+internal\adapter\in\scheduler\runid_test.go:128:15: undefined: uuidFrom
+internal\adapter\in\scheduler\runid_test.go:135:50: unknown field ReconciliationPending in struct literal of type port.SyncReport
+# github.com/code-corhuila/synkro-worker/internal/domain/model [github.com/code-corhuila/synkro-worker/internal/domain/model.test]
+internal\domain\model\stock_test.go:28:46: cannot use testRunID (untyped string constant "6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab") as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:42:46: cannot use testRunID (untyped string constant "6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab") as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:55:43: cannot use testRunID (untyped string constant "6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab") as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:56:47: cannot use testRunID (untyped string constant "6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab") as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:57:43: cannot use other (variable of type string) as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:68:40: cannot use testRunID (untyped string constant "6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab") as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:71:41: cannot use testRunID (untyped string constant "6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab") as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:93:48: cannot use id (variable of type string) as time.Time value in argument to NewOpeningIntent
+internal\domain\model\stock_test.go:95:23: undefined: ErrInvalidRunID
+internal\domain\model\stock_test.go:109:12: undefined: ValidateRunID
+# github.com/code-corhuila/synkro-worker/internal/application/usecase [github.com/code-corhuila/synkro-worker/internal/application/usecase.test]
+internal\application\usecase\low_stock_test.go:32:40: not enough arguments in call to NewLowStockAlerts
+	have (port.ProductsGateway, Config, *slog.Logger)
+	want (port.ProductsGateway, port.Clock, Config, *slog.Logger)
+internal\application\usecase\low_stock_test.go:42:38: unknown field BatchSize in struct literal of type Config
+internal\application\usecase\low_stock_test.go:540:47: rep.ReconciliationPending undefined (type port.SyncReport has no field or method ReconciliationPending)
+internal\application\usecase\low_stock_test.go:599:11: rep.ReconciliationPending undefined (type port.SyncReport has no field or method ReconciliationPending)
+internal\application\usecase\low_stock_test.go:627:9: rep.ReconciliationPending undefined (type port.SyncReport has no field or method ReconciliationPending)
+internal\application\usecase\low_stock_test.go:634:30: next.ReconciliationPending undefined (type port.SyncReport has no field or method ReconciliationPending)
+internal\application\usecase\low_stock_test.go:716:29: undefined: model.ErrInvalidRunID
+internal\application\usecase\low_stock_test.go:754:20: undefined: phaseQuotas
+internal\application\usecase\low_stock_test.go:1292:41: not enough arguments in call to NewLowStockAlerts
+	have (*fakeProducts, Config, nil)
+	want (port.ProductsGateway, port.Clock, Config, *slog.Logger)
+internal\application\usecase\low_stock_test.go:1296:52: not enough arguments in call to NewLowStockAlerts
+	have (nil, Config, nil)
+	want (port.ProductsGateway, port.Clock, Config, *slog.Logger)
+?   	github.com/code-corhuila/synkro-worker/cmd/worker	[no test files]
+FAIL	github.com/code-corhuila/synkro-worker/internal/adapter/in/scheduler [build failed]
+ok  	github.com/code-corhuila/synkro-worker/internal/adapter/out/products	1.542s
+?   	github.com/code-corhuila/synkro-worker/internal/application/port	[no test files]
+FAIL	github.com/code-corhuila/synkro-worker/internal/application/usecase [build failed]
+ok  	github.com/code-corhuila/synkro-worker/internal/config	4.294s
+FAIL	github.com/code-corhuila/synkro-worker/internal/domain/model [build failed]
+FAIL
+
+# Reading: scheduler, usecase and domain tests fail to build against the daily-key/clock/fallback code (missing ValidateRunID, ErrInvalidRunID, uuidFrom, phaseQuotas, BatchSize, ReconciliationPending; NewOpeningIntent still takes time.Time).
+# products (adapter) and config packages pass: the adapter already accepted a valid RESOLVED body with 200/201 and re-sent the same key/body on retry; those new tests are regression guards, not RED.

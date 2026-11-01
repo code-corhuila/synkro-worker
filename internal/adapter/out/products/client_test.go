@@ -333,6 +333,86 @@ func TestOpenAlert_ReportsAReplayedResolvedAlertAsItIs(t *testing.T) {
 	}
 }
 
+// WRK-KEY-09 (controlled HTTP): ADR-018 allows a valid RESOLVED body with 200
+// or 201, e.g. a resolution committing between the creation/association and
+// the representation read. The adapter reports it as it is; HTTP 201 only
+// says Created, never that the alert is OPEN.
+func TestOpenAlert_AValidResolvedBodyIsAcceptedWith200And201(t *testing.T) {
+	for _, status := range []int{200, 201} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			h := newHarness(t, func(w http.ResponseWriter, r *http.Request) { writeJSON(w, status, alertJSON(aid, pid, "RESOLVED")) })
+
+			res, err := h.client.OpenAlert(context.Background(), model.OpeningIntent{ProductID: pid, StockAtOpening: 2, Key: "low-stock:" + pid + ":6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab"})
+
+			if err != nil {
+				t.Fatalf("a valid RESOLVED answer is not malformed: %v", err)
+			}
+			if res.Alert.ID != aid || res.Alert.Status != model.AlertResolved || res.Created != (status == 201) {
+				t.Errorf("unexpected result for %d: %+v", status, res)
+			}
+		})
+	}
+}
+
+func TestOpenAlert_AResolvedBodyOfAnotherProductOrWithBadFieldsStaysMalformed(t *testing.T) {
+	for name, body := range map[string]string{
+		"other product": alertJSON(aid, aid, "RESOLVED"),
+		"no alert id":   `{"productId":"` + pid + `","status":"RESOLVED","stockAtOpening":1}`,
+		"no status":     `{"alertId":"` + aid + `","productId":"` + pid + `"}`,
+		"bad status":    alertJSON(aid, pid, "CLOSED"),
+	} {
+		for _, status := range []int{200, 201} {
+			t.Run(fmt.Sprintf("%s %d", name, status), func(t *testing.T) {
+				h := newHarness(t, func(w http.ResponseWriter, r *http.Request) { writeJSON(w, status, body) })
+
+				_, err := h.client.OpenAlert(context.Background(), model.OpeningIntent{ProductID: pid, Key: "low-stock:" + pid + ":6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab"})
+
+				if !errors.Is(err, port.ErrMalformedResponse) {
+					t.Fatalf("want ErrMalformedResponse, got %v", err)
+				}
+			})
+		}
+	}
+}
+
+// WRK-KEY-01 (controlled HTTP, not Products): the first request is committed
+// by the server but its response is lost; the retry carries the identical key
+// and body and receives the same alert identity.
+func TestOpenAlert_ALostResponseIsRetriedWithTheIdenticalKeyBodyAndTheSameAlert(t *testing.T) {
+	var (
+		mu     sync.Mutex
+		keys   []string
+		bodies []string
+		n      atomic.Int32
+	)
+	h := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		bodies = append(bodies, string(b))
+		mu.Unlock()
+		if n.Add(1) == 1 { // committed, but the answer never arrives
+			conn, _, _ := w.(http.Hijacker).Hijack()
+			_ = conn.Close()
+			return
+		}
+		writeJSON(w, 200, alertJSON(aid, pid, "OPEN"))
+	})
+	in := model.OpeningIntent{ProductID: pid, StockAtOpening: 2, Key: "low-stock:" + pid + ":6f1c2d3e-4a5b-4c6d-8e7f-0123456789ab"}
+
+	res, err := h.client.OpenAlert(ctxWithCorr(), in)
+
+	if err != nil || res.Alert.ID != aid || res.Created {
+		t.Fatalf("want the same alert as a replay after one retry, got %+v / %v", res, err)
+	}
+	if len(keys) != 2 || keys[0] != in.Key || keys[1] != in.Key {
+		t.Errorf("both attempts must send the same key: %v", keys)
+	}
+	if bodies[0] != bodies[1] || !strings.Contains(bodies[0], `"stockAtOpening":2`) {
+		t.Errorf("both attempts must send the same body: %v", bodies)
+	}
+}
+
 func TestOpenAlert_RejectsMalformedOrContradictoryAnswers(t *testing.T) {
 	tests := map[string]struct {
 		status int

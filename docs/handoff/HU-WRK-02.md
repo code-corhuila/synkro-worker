@@ -1,5 +1,13 @@
 # HU-WRK-02 — Low-stock alert job: handoff and evidence
 
+> **Notice (2026-10-31).** This file is the historical evidence of 2026-10-27 and is kept as written. The
+> behaviour it describes for the daily `low-stock:<productId>:<date>` key, the D-1 finding and the budget has
+> since been continued under the same story (#265) by ADR-018: see
+> [`HU-WRK-02-run-contract.md`](HU-WRK-02-run-contract.md). In particular, the statement in section 2, item 1, that
+> `LOW_STOCK_MAX_PAGES=1` reproduces "up to `BATCH_SIZE` per run" was **incorrect**: it limited each phase, not the
+> run, so a run could still reach `2 * BATCH_SIZE` list items. The total is now `BATCH_SIZE`. The verification
+> in section 4 was run against the code of that date and is not re-presented as evidence for the current code.
+
 Story: `code-corhuila/synkro-docs#265`. Repository: `synkro-worker`. Branch: `feat/implement-low-stock-alert-job`,
 cut from `origin/develop` at `ea0bb32488f6db09c26877fad4dd27c9b2ef147f`. Evidence gathered on 2026-10-27 (UTC).
 
