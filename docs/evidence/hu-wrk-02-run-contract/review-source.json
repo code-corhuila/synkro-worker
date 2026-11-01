@@ -1,0 +1,9 @@
+{
+  "base_revision": "431737a5df86180f2a49bb96391339fc870da925",
+  "production_source_sha256": "e44b98a2fb3db48d27d2165fb5fd37a155822f3d145362c0a5d6973e5656ec5a",
+  "definition": "Sorted relative paths and LF-normalized bytes of go.mod and production .go files, separated by NUL.",
+  "top_level_tests_passed": 118,
+  "tests_and_subtests_passed": 246,
+  "review_finding": "Initial code could receive 102 rows with BATCH_SIZE=100 after short pages. Regression reproduced before request-slot reservation correction.",
+  "cleanup": "Only exact labelled disposable PostgreSQL/migration/network/volume and own native Products process removed; shared stack preserved."
+}
