@@ -1,0 +1,25 @@
+# GREEN phase, 2026-10-31. Windows, go1.27.0 windows/amd64; go.mod declares go 1.23; CGO_ENABLED=0 and no C compiler, so -race was NOT run.
+## gofmt (checked on LF-normalised content; the CRLF checkout makes plain 'gofmt -l' list untouched files)
+unformatted files: 0
+## go vet ./...
+ok
+## go vet -tags acceptance ./...
+ok
+## go build ./...
+ok
+## go test -count=1 ./...
+?   	github.com/code-corhuila/synkro-worker/cmd/worker	[no test files]
+ok  	github.com/code-corhuila/synkro-worker/internal/adapter/in/scheduler	5.109s
+ok  	github.com/code-corhuila/synkro-worker/internal/adapter/out/products	1.654s
+?   	github.com/code-corhuila/synkro-worker/internal/application/port	[no test files]
+ok  	github.com/code-corhuila/synkro-worker/internal/application/usecase	6.290s
+ok  	github.com/code-corhuila/synkro-worker/internal/config	4.170s
+ok  	github.com/code-corhuila/synkro-worker/internal/domain/model	0.835s
+## go test -count=1 -v ./... (test runs, incl. sub-tests)
+241
+## acceptance (opt-in, no fixtures here)
+--- SKIP: TestReal_NewRunKeepsTheSingleOpenAlertAndItsOriginalStock (0.00s)
+--- SKIP: TestReal_ASameDayDropAfterResolutionOpensADistinctAlertAndTheOldKeyStillReturnsTheOldOne (0.00s)
+--- SKIP: TestReal_ConcurrentDifferentRunKeysProduceOneOpenAlert (0.00s)
+PASS
+ok  	github.com/code-corhuila/synkro-worker/internal/acceptance	1.259s

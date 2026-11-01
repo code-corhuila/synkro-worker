@@ -1,0 +1,20 @@
+--- FAIL: TestRun_ShortThenFullPagesNeverExceedTheTotalAdmissionBudget (0.00s)
+    --- FAIL: TestRun_ShortThenFullPagesNeverExceedTheTotalAdmissionBudget/00000000-0000-4000-8000-000000000006 (0.00s)
+        review_budget_test.go:59: alerts: received=4 requested=6 exceeds quota=3
+        review_budget_test.go:59: products: received=4 requested=6 exceeds quota=3
+        review_budget_test.go:63: received 8 elements across both phases, batch=6
+    --- FAIL: TestRun_ShortThenFullPagesNeverExceedTheTotalAdmissionBudget/00000000-0000-4000-8000-000000000013 (0.00s)
+        review_budget_test.go:59: products: received=8 requested=14 exceeds quota=7
+        review_budget_test.go:59: alerts: received=7 requested=12 exceeds quota=6
+        review_budget_test.go:63: received 15 elements across both phases, batch=13
+    --- FAIL: TestRun_ShortThenFullPagesNeverExceedTheTotalAdmissionBudget/00000000-0000-4000-8000-000000000014 (0.00s)
+        review_budget_test.go:59: products: received=8 requested=14 exceeds quota=7
+        review_budget_test.go:59: alerts: received=8 requested=14 exceeds quota=7
+        review_budget_test.go:63: received 16 elements across both phases, batch=14
+    --- FAIL: TestRun_ShortThenFullPagesNeverExceedTheTotalAdmissionBudget/00000000-0000-4000-8000-000000000100 (0.00s)
+        review_budget_test.go:59: products: received=51 requested=100 exceeds quota=50
+        review_budget_test.go:59: alerts: received=51 requested=100 exceeds quota=50
+        review_budget_test.go:63: received 102 elements across both phases, batch=100
+FAIL
+FAIL	github.com/code-corhuila/synkro-worker/internal/application/usecase	5.595s
+FAIL

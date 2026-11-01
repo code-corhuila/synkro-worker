@@ -1,0 +1,15 @@
+{
+  "execution": "5ed36dc39f5040d88cd1da10bf7e40b2",
+  "source_revisions": {
+    "synkro-products-api": "8c04934ae5b51417a0b88506cc59734ef7913e64",
+    "synkro-products-db": "043e485d16018fc4fb4cd60694c2a521c143ddbd"
+  },
+  "status": "READY",
+  "cleanup": "PASSED",
+  "authentication": "Disposable test-issued RS256 JWTs. Products verifies them; real Auth issuance is not exercised.",
+  "go_version": "go version go1.27.0 windows/amd64",
+  "migrations_applied": 17,
+  "products_origin": "http://127.0.0.1:56489",
+  "database": "dedicated disposable PostgreSQL",
+  "service": "native Products process from the exact published source"
+}
