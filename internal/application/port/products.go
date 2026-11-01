@@ -46,8 +46,11 @@ type AlertPage struct {
 	Info  PageInfo
 }
 
-// OpenAlertResult says what Products answered to an opening: Created is true
-// for a new alert (201) and false when Products replayed an existing one (200).
+// OpenAlertResult says what Products answered to an opening. Created is true
+// for 201 (Products created an alert for the key) and false for 200 (a
+// recorded key replayed, or a new key associated with the product's existing
+// OPEN alert). Neither status says anything about the alert's state: Alert
+// may be RESOLVED with 200 or 201 (ADR-018), and the caller must read Status.
 type OpenAlertResult struct {
 	Alert   model.StockAlert
 	Created bool

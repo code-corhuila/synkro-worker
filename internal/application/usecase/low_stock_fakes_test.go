@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/code-corhuila/synkro-worker/internal/application/port"
 	"github.com/code-corhuila/synkro-worker/internal/domain/model"
@@ -35,11 +34,21 @@ type fakeProducts struct {
 	badResolveStatus bool
 	ignoreFilter     bool // return every product, whatever the threshold
 
+	// openReply rewrites what a successful opening answers (status, Created).
+	openReply func(model.OpeningIntent, port.OpenAlertResult) port.OpenAlertResult
+
+	// pageCap makes the list endpoints answer short pages (at most pageCap
+	// items, total pages computed on that size), like a server that caps pages.
+	pageCap int
+
 	// beforeCall runs at the start of every gateway call, with the call name.
 	beforeCall func(ctx context.Context, name string) error
 
-	calls []string
-	keys  []string
+	calls         []string
+	keys          []string
+	intents       []model.OpeningIntent
+	productLimits []int // limit of every ListProductsAtMost call
+	alertLimits   []int // limit of every ListAlerts call
 }
 
 func newFake(products ...model.Product) *fakeProducts {
@@ -99,6 +108,10 @@ func (f *fakeProducts) ListProductsAtMost(ctx context.Context, maxStock, page, l
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.productLimits = append(f.productLimits, limit)
+	if f.pageCap > 0 && f.pageCap < limit {
+		limit = f.pageCap
+	}
 	if err, ok := f.listErr[fmt.Sprintf("products:%d", page)]; ok {
 		return port.ProductPage{}, err
 	}
@@ -138,6 +151,10 @@ func (f *fakeProducts) ListAlerts(ctx context.Context, status model.AlertStatus,
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.alertLimits = append(f.alertLimits, limit)
+	if f.pageCap > 0 && f.pageCap < limit {
+		limit = f.pageCap
+	}
 	if err, ok := f.listErr[fmt.Sprintf("alerts:%d", page)]; ok {
 		return port.AlertPage{}, err
 	}
@@ -161,20 +178,21 @@ func (f *fakeProducts) OpenAlert(ctx context.Context, in model.OpeningIntent) (p
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.keys = append(f.keys, in.Key)
+	f.intents = append(f.intents, in)
 	if err, ok := f.openErr[in.ProductID]; ok {
 		return port.OpenAlertResult{}, err
 	}
 	if id, ok := f.byKey[in.Key]; ok { // replay: the alert as it is now
 		for _, a := range f.alerts {
 			if a.ID == id {
-				return port.OpenAlertResult{Alert: *a}, nil
+				return f.reply(in, port.OpenAlertResult{Alert: *a}), nil
 			}
 		}
 	}
 	for _, a := range f.alerts { // one OPEN alert per product
 		if a.ProductID == in.ProductID && a.Status == model.AlertOpen {
 			f.byKey[in.Key] = a.ID
-			return port.OpenAlertResult{Alert: *a}, nil
+			return f.reply(in, port.OpenAlertResult{Alert: *a}), nil
 		}
 	}
 	f.nextID++
@@ -188,7 +206,14 @@ func (f *fakeProducts) OpenAlert(ctx context.Context, in model.OpeningIntent) (p
 	if f.badOpenAlert != nil {
 		res = f.badOpenAlert(in, res)
 	}
-	return port.OpenAlertResult{Alert: res, Created: true}, nil
+	return f.reply(in, port.OpenAlertResult{Alert: res, Created: true}), nil
+}
+
+func (f *fakeProducts) reply(in model.OpeningIntent, r port.OpenAlertResult) port.OpenAlertResult {
+	if f.openReply != nil {
+		return f.openReply(in, r)
+	}
+	return r
 }
 
 func (f *fakeProducts) ResolveAlert(ctx context.Context, id string) (model.StockAlert, error) {
@@ -225,23 +250,6 @@ func (f *fakeProducts) openAlertCount(productID string) int {
 	return n
 }
 
-type fixedClock struct {
-	mu sync.Mutex
-	t  time.Time
-}
-
-func (c *fixedClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.t
-}
-
-func (c *fixedClock) set(t time.Time) {
-	c.mu.Lock()
-	c.t = t
-	c.mu.Unlock()
-}
-
 // logBuffer captures structured logs so tests can assert on what is (and is
 // not) written.
 type logBuffer struct {
@@ -263,4 +271,14 @@ func (b *logBuffer) String() string {
 
 func (b *logBuffer) logger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(b, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+// resolveStored marks a stored alert RESOLVED without taking the lock: it is
+// meant for openReply hooks, which already run under it.
+func (f *fakeProducts) resolveStored(id string) {
+	for _, a := range f.alerts {
+		if a.ID == id {
+			a.Status = model.AlertResolved
+		}
+	}
 }

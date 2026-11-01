@@ -6,17 +6,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/code-corhuila/synkro-worker/internal/adapter/in/scheduler"
 	"github.com/code-corhuila/synkro-worker/internal/adapter/out/products"
 	"github.com/code-corhuila/synkro-worker/internal/application/usecase"
 	"github.com/code-corhuila/synkro-worker/internal/config"
 )
-
-type systemClock struct{}
-
-func (systemClock) Now() time.Time { return time.Now() }
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -39,9 +34,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	lowStock, err := usecase.NewLowStockAlerts(gateway, systemClock{}, usecase.Config{
+	lowStock, err := usecase.NewLowStockAlerts(gateway, usecase.Config{
 		Threshold: cfg.LowStockThreshold,
-		PageSize:  cfg.BatchSize,
+		BatchSize: cfg.BatchSize,
 		MaxPages:  cfg.MaxPages,
 	}, logger)
 	if err != nil {
