@@ -1,0 +1,18 @@
+{
+  "command": "go test -tags acceptance -count=1 -timeout=150s -v ./internal/acceptance/",
+  "exit_code": 0,
+  "source_revisions": {
+    "synkro-products-api": "8c04934ae5b51417a0b88506cc59734ef7913e64",
+    "synkro-products-db": "043e485d16018fc4fb4cd60694c2a521c143ddbd"
+  },
+  "authentication": "Disposable fixture-issued RS256 JWTs, validated by real Products. Real Auth issuance not executed.",
+  "scope": "Real Worker use case with fixture-scoped list adapter, real Products HTTP client, real Products and PostgreSQL; no real scheduler process or full-root run.",
+  "fixture_setup": "All business fixtures and observed replenishment/resolution/new drop prepared through public Products APIs. No business SQL.",
+  "tests_passed": [
+    "TestReal_NewRunKeepsTheSingleOpenAlertAndItsOriginalStock",
+    "TestReal_ASameDayDropAfterResolutionOpensADistinctAlertAndTheOldKeyStillReturnsTheOldOne",
+    "TestReal_ConcurrentDifferentRunKeysProduceOneOpenAlert"
+  ],
+  "tests_failed": [],
+  "skipped": []
+}

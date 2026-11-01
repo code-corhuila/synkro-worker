@@ -20,9 +20,9 @@ func stack() string {
 }
 
 // LowStockJob adapts the low-stock use case to a scheduler Job. It reports
-// the counts of the run, and turns both a run-level error and any failed item
-// into a failed run, so the scheduler logs it as such. It logs counts only:
-// no tokens, no response bodies.
+// the counts of the run, and turns a run-level error, any failed item and any
+// pending reconciliation into a non-clean run, so the scheduler logs it as
+// such. It logs counts only: no tokens, no response bodies.
 func LowStockJob(logger *slog.Logger, uc port.LowStockAlertSync) Job {
 	return func(ctx context.Context) error {
 		log := logger.With("correlationId", port.CorrelationIDFrom(ctx))
@@ -31,6 +31,7 @@ func LowStockJob(logger *slog.Logger, uc port.LowStockAlertSync) Job {
 		counts := []any{
 			"processed", rep.Processed(),
 			"failed", rep.Failed,
+			"reconciliationPending", rep.ReconciliationPending,
 			"productsExamined", rep.ProductsExamined,
 			"opened", rep.Opened,
 			"alreadyOpen", rep.AlreadyOpen,
@@ -44,7 +45,12 @@ func LowStockJob(logger *slog.Logger, uc port.LowStockAlertSync) Job {
 			return err
 		case rep.Failed > 0:
 			log.Warn("low-stock run finished with failed items", counts...)
-			return fmt.Errorf("low-stock run finished with %d failed item(s)", rep.Failed)
+			return fmt.Errorf("low-stock run finished with %d failed item(s) and %d pending reconciliation(s)",
+				rep.Failed, rep.ReconciliationPending)
+		case rep.ReconciliationPending > 0:
+			log.Warn("low-stock run finished with pending reconciliations", counts...)
+			return fmt.Errorf("low-stock run finished with %d pending reconciliation(s): a valid RESOLVED alert answered an opening",
+				rep.ReconciliationPending)
 		}
 		log.Info("low-stock run completed", counts...)
 		return nil
