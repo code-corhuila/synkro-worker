@@ -1,0 +1,13 @@
+{
+  "command": "gofmt; go vet ./...; go vet -tags acceptance ./...; go test -race -json -count=1 -timeout=120s ./...; go build ./...",
+  "toolchain": "go version go1.23.12 linux/amd64",
+  "image_id": "sha256:167053a2bb901972bf2c1611f8f52c44d5fe7e762e5cab213708d82c421614db",
+  "exit_code": 0,
+  "tests_passed_including_subtests": 246,
+  "failed_tests": [],
+  "format_passed": true,
+  "vet_passed": true,
+  "build_passed": true,
+  "race_detector": true,
+  "scope": "LF-normalized public source snapshot; no credentials or private scratch mounted; network disabled."
+}
