@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/code-corhuila/synkro-worker/internal/application/port"
 	"io"
 	"math/rand/v2"
 	"net/http"
@@ -19,6 +18,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/code-corhuila/synkro-worker/internal/application/port"
+	"github.com/code-corhuila/synkro-worker/internal/domain/model"
 )
 
 const (
@@ -64,6 +66,8 @@ type Client struct {
 	bkBase   time.Duration
 	bkMax    time.Duration
 }
+
+var _ port.ProductsGateway = (*Client)(nil)
 
 func New(o Options) (*Client, error) {
 	// None of these errors echoes the URL or the token: either may carry
@@ -144,6 +148,171 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
+
+// ─── port methods ────────────────────────────────────────────────────────
+
+func (c *Client) ListProductsAtMost(ctx context.Context, maxStock, page, limit int) (port.ProductPage, error) {
+	q := url.Values{}
+	q.Set("stockAtMost", strconv.Itoa(maxStock))
+	q.Set("page", strconv.Itoa(page))
+	q.Set("limit", strconv.Itoa(limit))
+	const op = "list products"
+
+	body, err := c.call(ctx, op, request{method: http.MethodGet, path: "/api/v1/products", query: q}, http.StatusOK)
+	if err != nil {
+		return port.ProductPage{}, err
+	}
+	var env struct {
+		Data *[]productDTO `json:"data"`
+		Meta *metaDTO      `json:"meta"`
+	}
+	if err := decode(op, body, &env); err != nil {
+		return port.ProductPage{}, err
+	}
+	if env.Data == nil {
+		return port.ProductPage{}, malformed(op, "data is missing")
+	}
+	info, err := env.Meta.validate(op, page, limit, len(*env.Data))
+	if err != nil {
+		return port.ProductPage{}, err
+	}
+	items := make([]model.Product, 0, len(*env.Data))
+	for i, d := range *env.Data {
+		p, err := d.toModel(op)
+		if err != nil {
+			return port.ProductPage{}, err
+		}
+		if p.Stock > maxStock {
+			return port.ProductPage{}, malformed(op, "item %d has stock %d, above stockAtMost=%d", i, p.Stock, maxStock)
+		}
+		items = append(items, p)
+	}
+	return port.ProductPage{Items: items, Info: info}, nil
+}
+
+func (c *Client) GetProduct(ctx context.Context, productID string) (model.Product, error) {
+	const op = "get product"
+	if !uuidRE.MatchString(productID) {
+		return model.Product{}, fmt.Errorf("%s: %w: product id is not a UUID", op, port.ErrRejected)
+	}
+	body, err := c.call(ctx, op, request{method: http.MethodGet, path: "/api/v1/products/" + productID}, http.StatusOK)
+	if err != nil {
+		return model.Product{}, err
+	}
+	var d productDTO
+	if err := decode(op, body, &d); err != nil {
+		return model.Product{}, err
+	}
+	p, err := d.toModel(op)
+	if err != nil {
+		return model.Product{}, err
+	}
+	if !strings.EqualFold(p.ID, productID) {
+		return model.Product{}, malformed(op, "answer is for another product")
+	}
+	return p, nil
+}
+
+func (c *Client) ListAlerts(ctx context.Context, status model.AlertStatus, page, limit int) (port.AlertPage, error) {
+	q := url.Values{}
+	q.Set("status", string(status))
+	q.Set("page", strconv.Itoa(page))
+	q.Set("limit", strconv.Itoa(limit))
+	const op = "list stock alerts"
+
+	body, err := c.call(ctx, op, request{method: http.MethodGet, path: "/api/v1/stock-alerts", query: q}, http.StatusOK)
+	if err != nil {
+		return port.AlertPage{}, err
+	}
+	var env struct {
+		Data *[]alertDTO `json:"data"`
+		Meta *metaDTO    `json:"meta"`
+	}
+	if err := decode(op, body, &env); err != nil {
+		return port.AlertPage{}, err
+	}
+	if env.Data == nil {
+		return port.AlertPage{}, malformed(op, "data is missing")
+	}
+	info, err := env.Meta.validate(op, page, limit, len(*env.Data))
+	if err != nil {
+		return port.AlertPage{}, err
+	}
+	items := make([]model.StockAlert, 0, len(*env.Data))
+	for i, d := range *env.Data {
+		a, err := d.toModel(op)
+		if err != nil {
+			return port.AlertPage{}, err
+		}
+		if a.Status != status {
+			return port.AlertPage{}, malformed(op, "item %d is %s in a list filtered by %s", i, a.Status, status)
+		}
+		items = append(items, a)
+	}
+	return port.AlertPage{Items: items, Info: info}, nil
+}
+
+func (c *Client) OpenAlert(ctx context.Context, intent model.OpeningIntent) (port.OpenAlertResult, error) {
+	const op = "open stock alert"
+	if n := len(intent.Key); n < minKeyLen || n > maxKeyLen {
+		return port.OpenAlertResult{}, fmt.Errorf("%s: %w: idempotency key must have %d to %d characters", op, port.ErrRejected, minKeyLen, maxKeyLen)
+	}
+	if !uuidRE.MatchString(intent.ProductID) {
+		return port.OpenAlertResult{}, fmt.Errorf("%s: %w: product id is not a UUID", op, port.ErrRejected)
+	}
+	payload, err := json.Marshal(struct {
+		ProductID      string `json:"productId"`
+		StockAtOpening int    `json:"stockAtOpening"`
+	}{intent.ProductID, intent.StockAtOpening})
+	if err != nil {
+		return port.OpenAlertResult{}, fmt.Errorf("%s: %w", op, err)
+	}
+
+	// call re-sends this exact request, key included, on every retry.
+	status, body, err := c.callStatus(ctx, op, request{
+		method: http.MethodPost, path: "/api/v1/stock-alerts", body: payload, idempotencyKey: intent.Key,
+	}, http.StatusOK, http.StatusCreated)
+	if err != nil {
+		return port.OpenAlertResult{}, err
+	}
+	var d alertDTO
+	if err := decode(op, body, &d); err != nil {
+		return port.OpenAlertResult{}, err
+	}
+	a, err := d.toModel(op)
+	if err != nil {
+		return port.OpenAlertResult{}, err
+	}
+	if !strings.EqualFold(a.ProductID, intent.ProductID) {
+		return port.OpenAlertResult{}, malformed(op, "answer is an alert of another product")
+	}
+	return port.OpenAlertResult{Alert: a, Created: status == http.StatusCreated}, nil
+}
+
+func (c *Client) ResolveAlert(ctx context.Context, alertID string) (model.StockAlert, error) {
+	const op = "resolve stock alert"
+	if !uuidRE.MatchString(alertID) {
+		return model.StockAlert{}, fmt.Errorf("%s: %w: alert id is not a UUID", op, port.ErrRejected)
+	}
+	body, err := c.call(ctx, op, request{method: http.MethodPost, path: "/api/v1/stock-alerts/" + alertID + "/resolve"}, http.StatusOK)
+	if err != nil {
+		return model.StockAlert{}, err
+	}
+	var d alertDTO
+	if err := decode(op, body, &d); err != nil {
+		return model.StockAlert{}, err
+	}
+	a, err := d.toModel(op)
+	if err != nil {
+		return model.StockAlert{}, err
+	}
+	if !strings.EqualFold(a.ID, alertID) {
+		return model.StockAlert{}, malformed(op, "answer is another alert")
+	}
+	return a, nil
+}
+
+// ─── transport with bounded retries ──────────────────────────────────────
 
 type request struct {
 	method         string
@@ -315,6 +484,8 @@ func safeToken(s string) string {
 	return b.String()
 }
 
+// ─── response validation ─────────────────────────────────────────────────
+
 func malformed(op, format string, args ...any) error {
 	return fmt.Errorf("%s: %w: %s", op, port.ErrMalformedResponse, fmt.Sprintf(format, args...))
 }
@@ -344,4 +515,78 @@ func errKind(err error) string {
 		return "empty or truncated"
 	}
 	return "invalid"
+}
+
+type metaDTO struct {
+	Page       *int `json:"page"`
+	Limit      *int `json:"limit"`
+	Total      *int `json:"total"`
+	TotalPages *int `json:"totalPages"`
+}
+
+// validate checks the envelope against what was asked for: a server that
+// answers another page or limit, or more items than the limit, contradicts
+// the request and cannot be trusted to paginate.
+func (m *metaDTO) validate(op string, page, limit, items int) (port.PageInfo, error) {
+	if m == nil || m.Page == nil || m.Limit == nil || m.Total == nil || m.TotalPages == nil {
+		return port.PageInfo{}, malformed(op, "meta is missing or incomplete")
+	}
+	if *m.Page != page || *m.Limit != limit {
+		return port.PageInfo{}, malformed(op, "meta answers page %d limit %d, asked page %d limit %d", *m.Page, *m.Limit, page, limit)
+	}
+	if *m.Total < 0 || *m.TotalPages < 0 {
+		return port.PageInfo{}, malformed(op, "meta has negative counts")
+	}
+	if items > limit {
+		return port.PageInfo{}, malformed(op, "%d items for a limit of %d", items, limit)
+	}
+	return port.PageInfo{Page: *m.Page, Limit: *m.Limit, Total: *m.Total, TotalPages: *m.TotalPages}, nil
+}
+
+type productDTO struct {
+	ProductID *string `json:"productId"`
+	Stock     *int    `json:"stock"`
+}
+
+// toModel never defaults a missing field: a product without a stock is not a
+// product with stock 0.
+func (d productDTO) toModel(op string) (model.Product, error) {
+	if d.ProductID == nil || !uuidRE.MatchString(*d.ProductID) {
+		return model.Product{}, malformed(op, "product without a valid productId")
+	}
+	if d.Stock == nil {
+		return model.Product{}, malformed(op, "product without stock")
+	}
+	if *d.Stock < 0 {
+		return model.Product{}, malformed(op, "product with negative stock")
+	}
+	return model.Product{ID: *d.ProductID, Stock: *d.Stock}, nil
+}
+
+type alertDTO struct {
+	AlertID        *string `json:"alertId"`
+	ProductID      *string `json:"productId"`
+	Status         *string `json:"status"`
+	StockAtOpening *int    `json:"stockAtOpening"`
+}
+
+func (d alertDTO) toModel(op string) (model.StockAlert, error) {
+	if d.AlertID == nil || !uuidRE.MatchString(*d.AlertID) {
+		return model.StockAlert{}, malformed(op, "alert without a valid alertId")
+	}
+	if d.ProductID == nil || !uuidRE.MatchString(*d.ProductID) {
+		return model.StockAlert{}, malformed(op, "alert without a valid productId")
+	}
+	if d.Status == nil {
+		return model.StockAlert{}, malformed(op, "alert without status")
+	}
+	st := model.AlertStatus(*d.Status)
+	if st != model.AlertOpen && st != model.AlertResolved {
+		return model.StockAlert{}, malformed(op, "alert with unknown status")
+	}
+	a := model.StockAlert{ID: *d.AlertID, ProductID: *d.ProductID, Status: st}
+	if d.StockAtOpening != nil {
+		a.StockAtOpening = *d.StockAtOpening
+	}
+	return a, nil
 }
