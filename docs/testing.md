@@ -14,8 +14,8 @@ go vet ./...
 go test -race ./...
 ```
 
-`-race` needs cgo (a C compiler); on Windows without one, run it in a Linux Go 1.23 container, for example
-`docker run --rm -v "$PWD":/src:ro -w /src golang:1.23-bookworm go test -race ./...`.
+`-race` needs cgo (a C compiler); on Windows without one, run it in a Linux Go 1.26.11 container, for example
+`docker run --rm -v "$PWD":/src:ro -w /src golang:1.26.11-bookworm go test -race ./...`.
 
 ### Opt-in acceptance against a real Products
 
